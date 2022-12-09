@@ -14,51 +14,21 @@ import pandas as pd
 import rasterio
 from rasterio.mask import mask
 
+import matplotlib as mpl
+mpl.rcParams['agg.path.chunksize'] = 10000
+mpl.rc('xtick', labelsize=22)     
+mpl.rc('ytick', labelsize=22)
+mpl.rcParams['pdf.fonttype'] = 42
+
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 #%%
 # -------------- Raster functions --------------------
 def xy_from_affine(tform=None,nx=None,ny=None):
-    '''
-    Construct position matrixes from affine.
-
-    Parameters
-    ----------
-    tform : 
-        Affine transform. The default is None.
-    nx : int
-        Number of columns. The default is None.
-    ny : int
-        Number of rows. The default is None.
-
-    Returns
-    -------
-    X : np.ndarray
-        Matrix of x positions of cell centers.
-    Y : np.ndarray
-        Matric of y positions of cell centers.
-
-    '''
     X,Y = np.meshgrid(np.arange(nx)+0.5,np.arange(ny)+0.5)*tform
     return X,Y
 
 def load_dem(demfname,shapes):
-    '''
-    Load DEM and spatial profile.
-
-    Parameters
-    ----------
-    demfname : path
-        Full path to DEM.
-    shapes : 
-        Feature class loaded in form required by rasterio.mask.mask.
-
-    Returns
-    -------
-    DEM : np.ndarray
-        Array of masked DEM values cropped to shapes.
-    out_profile : dict
-        Spatial dataset rasterio profile.
-
-    '''
     with rasterio.open(demfname) as src:
         out_image, out_transform = mask(src, shapes, crop=True)
         out_profile = src.profile
@@ -73,31 +43,7 @@ def load_dem(demfname,shapes):
 def stage_storage_dem(dem_fname=None,dem_array=None,
                       dem_profile=None, area_poly=None,
                       stage_range=None, nstages=50):
-    '''
-    Construct stage storage relationship from DEM.
-
-    Parameters
-    ----------
-    dem_fname : str, optional
-        Path to DEM raster. The default is None.
-    dem_array : np.ndarray, optional
-        DEM array already loaded into memory. The default is None.
-    dem_profile : dict, optional
-        Spatial information in rasterio profile form. The default is None.
-    area_poly : fiona polygon, optional
-        Polygon of area in DEM to consider for stage-storage relationship. The default is None.
-    stage_range : np.ndarray,list, optional
-        Minimum and maximum stages to calculate stages. Form [min, max]. The default is None.
-    nstages : int, optional
-        Number of stages to calculate across stage_range. The default is 50.
-
-    Returns
-    -------
-    stage_storage_dict : dict
-        Dictionary with keys 'stage','storage' and 'area', each containing a list
-        of values the same length as the others.
-
-    '''
+    
     stage_storage_dict = {'stage':np.linspace(*stage_range,nstages)}    
     
     if dem_array is None:
@@ -271,33 +217,7 @@ def sluice_flow(water_elev_1=None,water_elev_2=None,flood_orientation=1,
 def flood_sluice(landside_water_elev=None, marineside_water_elev=None,
                  in_dict=None,return_components=False,
                  grav=9.80665):
-    '''Calculate discharge through sluice gate for flood tide.
-    
-
-    Parameters
-    ----------
-    landside_water_elev : float, optional
-        Water elevation landward or upstream of the dike. The default is None.
-    marineside_water_elev : float, optional
-        Water elevation seaward or downstream of the dike. The default is None.
-    in_dict : dict, optional
-        Dictionary containing all information about the flow coefficients and
-        construction of the dike. The default is None.
-    return_components : bool, optional
-        True returns the discharge calculated from each sluice equation. False
-        only returns their sum. The default is False.
-    grav : float, optional
-        Gravitational acceleration in consistent units with the elevations. The default is 9.80665.
-
-    Returns
-    -------
-    Q_dike_sluice_calc_flood, float
-        Sum of discharge through sluice.
-        
-    Qdict, dict
-        Dictionary with individual components of discharge. Only returned if return_components=True.
-
-    '''
+    '''Calculate discharge through sluice gate for flood.'''
     
     # =============== Flood tide conditions ================
     # If (H_sea_lev > y_d_HR_lev): 
@@ -348,35 +268,9 @@ def flood_sluice(landside_water_elev=None, marineside_water_elev=None,
     
 
 def ebb_sluice(landside_water_elev=None, marineside_water_elev=None,
-                 in_dict=None,return_components=False,
-                 grav=9.80665):
-    '''Calculate discharge through sluice gate for ebb.
-    
-
-    Parameters
-    ----------
-    landside_water_elev : float, optional
-        Water elevation landward or upstream of the dike. The default is None.
-    marineside_water_elev : float, optional
-        Water elevation seaward or downstream of the dike. The default is None.
-    in_dict : TYPE, optional
-        Dictionary containing all information about the flow coefficients and
-        construction of the dike. The default is None.
-    return_components : bool, optional
-        True returns the discharge calculated from each sluice equation. False
-        only returns their sum. The default is False.
-    grav : float, optional
-        Gravitational acceleration in consistent units with the elevations. The default is 9.80665.
-
-    Returns
-    -------
-    Q_dike_sluice_calc_ebb, float
-        Sum of discharge through sluice.
-        
-    Qdict, dict
-        Dictionary with individual components of discharge. Only returned if return_components=True.
-
-    '''    
+                 in_dict=None,
+                 grav=9.80665, return_components=False):
+    '''Calculate discharge through sluice gate for ebb.'''      
     
     # =============== Ebb tide conditions ==================
     
@@ -463,7 +357,7 @@ def ebb_sluice(landside_water_elev=None, marineside_water_elev=None,
                  'supercritical_ebb':Q_ebb_supcrit_weir}
         return Q_dike_sluice_calc_ebb, Qdict
 
-def ebb_flap(water_elev_1=None,water_elev_2=None, 
+def ebb_flap(water_elev_2=None, water_elev_1=None,
                  in_dict=None,return_components=False,
                  grav=9.80665,angle_tol=1e-4):
     '''
@@ -471,28 +365,23 @@ def ebb_flap(water_elev_1=None,water_elev_2=None,
 
     Parameters
     ----------
-    water_elev_1 : float, optional
-        Water level on outside of gate. For the diked system, this is seaward or downstream. The default is None.
-    water_elev_2 : float, optional
-        Water level on inside of gate. For the diked system, this is landward or upstream.
+    water_elev_2 : TYPE, optional
+        DESCRIPTION. The default is None.
+    water_elev_1 : TYPE, optional
+        DESCRIPTION. The default is None.
     in_dict : TYPE, optional
-        Dictionary containing all information about the flow coefficients and
-        construction of the dike. The default is None.
-    return_components : bool, optional
-        True returns the discharge calculated from each sluice equation. False
-        only returns their sum. The default is False.
-    grav : float, optional
-        Gravitational acceleration in consistent units with the elevations. The default is 9.80665.
-    angle_tol : float, optional
-        Angle tolerance for the solution of the flap gate opening angle. The default is 1e-4.
+        DESCRIPTION. The default is None.
+    return_components : TYPE, optional
+        DESCRIPTION. The default is False.
+    grav : TYPE, optional
+        DESCRIPTION. The default is 9.80665.
+    angle_tol : TYPE, optional
+        DESCRIPTION. The default is 1e-4.
 
     Returns
     -------
-    Q_dike_flap_calc, float
-        Sum of discharge through flap.
-        
-    Qdict, dict
-        Dictionary with individual components of discharge. Only returned if return_components=True.
+    TYPE
+        DESCRIPTION.
 
     '''
 
@@ -639,28 +528,20 @@ def calc_qmatrix(water_elev_1=None,
                  control_dict=None,qdf=None,
                  ndecimal=3, return_components=False):
     '''
-    Calculate discharge matrix for water level elevations.
+    Calculate discharge matrix.
 
     Parameters
     ----------
-    water_elev_1 : list, np.ndarray, optional
-        Water level on outside of gate. For the diked system, this is seaward or downstream. The default is None.
-    water_elev_2 : list, np.ndarray, optional
-        Water level on inside of gate. For the diked system, this is landward or upstream. The default is None.
-    control_dict : dict, optional
-        Dictionary containing information on each flow control structure, including its
-        geometry and flow coefficients for various flow conditions. For an example, see
-        HRE_Model_to2100_currentinfrastructure.py. The default is None.
+    water_elev_1 : TYPE, optional
+        DESCRIPTION. The default is None.
+    water_elev_2 : TYPE, optional
+        DESCRIPTION. The default is None.
+    control_dict : TYPE, optional
+        DESCRIPTION. The default is None.
 
     Returns
     -------
-    qdf : pandas.DataFrame
-        Dataframe with rows set by water_elev_1 and columns by water_elev_2 with the 
-        value of each cell the total discharge through all control structures for the
-        water level conditions set by row, col.
-        
-    outQ_dict : dict
-        Dictionary with individual components of discharge storing a matrix for each.
+    None.
 
     '''
     
@@ -750,45 +631,34 @@ def calc_qmatrix(water_elev_1=None,
 def diked_waterlevel_solver(marineside_water_elev,  dt, Q_const=0, h_init=0,
                             stage_storage_dict=None, control_dict=None,
                             verbose=False,print_nsteps=10000,saveQ=False):
-    '''Solve dike flow using marine water level and stage-storage information.
+    '''
     
 
     Parameters
     ----------
-    marineside_water_elev : np.ndarray,  list
-         Water elevations seaward or downstream of the dike.
-    dt : float
-        Model and marineside_water_elev time step in consistent units with output Q.
-    Q_const : float, np.ndarray, list, optional
-        Source/sink of water into the water balance from sources other than the dike.
-        It can be negative to represent losses (i.e., pumping, evaporation). If Q_const is
-        a list-type, then it must be the same length as marineside_water_elev, and each timestep
-        in the water balance will use the corresponding Q_const value. The default is 0.
+    marineside_water_elev : TYPE
+        DESCRIPTION.
+    dt : TYPE
+        DESCRIPTION.
+    Q_const : TYPE, optional
+        DESCRIPTION. The default is 0.
     h_init : float, optional
         Starting surface water head inside water control structures. The default is 0.
-    stage_storage_dict : dict, optional
-        Stage-storage dictionary with keys 'stage' and 'storage' that is used to update the 
-        water level upstream of the dike at the end of each timestep. The default is None.
-    control_dict : dict, optional
-        Dictionary containing information on each flow control structure, including its
-        geometry and flow coefficients for various flow conditions. For an example, see
-        HRE_Model_*.py. The default is None.
-    verbose : bool, optional
-        True turns on verbose mode. The default is False.
-    print_nsteps : int, optional
-        With verbose=True, this sets how frequently the model progress is printed to the console.
-        The default is 10000.
-    saveQ : bool, optional
-        Boolean for saving the discharge from each flow structure through time. The default is False.
+    stage_storage_dict : TYPE, optional
+        DESCRIPTION. The default is None.
+    control_dict : TYPE, optional
+        DESCRIPTION. The default is None.
+    verbose : TYPE, optional
+        DESCRIPTION. The default is False.
+    print_nsteps : TYPE, optional
+        DESCRIPTION. The default is 10000.
+    saveQ : TYPE, optional
+        DESCRIPTION. The default is False.
 
     Returns
     -------
-    landside_water_elev : np.ndarray
-        Modeled water level on the upstream/inland side of the dike for each model step.
-    volume_array : np.ndarray
-        Modeled water volume stored behind the dike for each model step.
-    Q_dict : dict
-         Dictionary with individual components of discharge. Only returned if saveQ=True..
+    TYPE
+        DESCRIPTION.
 
     '''
     landside_water_elev = np.zeros_like(marineside_water_elev)
@@ -796,6 +666,8 @@ def diked_waterlevel_solver(marineside_water_elev,  dt, Q_const=0, h_init=0,
     Volume_update = None
     
     nsteps = len(marineside_water_elev)
+    
+    min_invert_elev = np.min([control_dict[i]['geom']['invert_elev'] for i in control_dict.keys()])
     
     if saveQ: # save discharge at each timestep
         Q_dict = {'background':np.zeros(nsteps)}
@@ -849,7 +721,22 @@ def diked_waterlevel_solver(marineside_water_elev,  dt, Q_const=0, h_init=0,
             # Calculate total discharge for all structures (+ is to marine, - is into landside waterbody)
             Q_init += Q_flap + Q_sluice
         
-
+        # if n_flap > 0:
+        #     Q_ebb_flap = ebb_flap(**in_dict)
+        #     # No Q_flood_flap - assumes flap gate is closed and allows no inflow
+        # if n_sluice > 0:
+        #     Q_ebb_sluice = ebb_sluice(**in_dict)
+        #     Q_flood_sluice = flood_sluice(**in_dict)
+        
+        # # Can add "leakage" through the gates during flood tide.
+        # # if (Q_flood_sluice == 0): # ebb tide
+        # #     Q_const = 0.02
+        # # else: # flood tide
+        # #     Q_const = 0.02 + 0.05*Q_flood_sluice # 5% of total flow through sluice is "leaking" through gates.
+        
+        # # Calculate total discharge for all structures (+ is to marine, - is into landside waterbody)
+        # Q_init = n_flap*Q_ebb_flap + n_sluice*Q_ebb_sluice + n_sluice*Q_flood_sluice + Q_const # total discharge at t=0
+        
         # Calculate change in dike waterbody volume over the time step, dt
         V_flux_init = Q_init*dt # Volume passed is discharge multipled by time
     
@@ -859,6 +746,14 @@ def diked_waterlevel_solver(marineside_water_elev,  dt, Q_const=0, h_init=0,
         # Calculate water level behind dike (inland_water_elev) with new volume for next time step
         # using the stage-storage relationship.
         h_init = np.interp(Volume_update,stage_storage_dict['storage'],stage_storage_dict['stage'])
+        
+        # Check for overstep - if the water level is below the invert level, no flow can happen
+        
+        if h_init < min_invert_elev:
+            if verbose:
+                if np.mod(i,print_nsteps)==0:
+                    print("Warning: Flow overshot invert. Consider decreasing time step.")
+            h_init = min_invert_elev
 
         if verbose:
             if np.mod(i,print_nsteps)==0:
@@ -869,20 +764,7 @@ def diked_waterlevel_solver(marineside_water_elev,  dt, Q_const=0, h_init=0,
         return landside_water_elev,volume_array
 
 def total_Q(q_dict=None):
-    '''
-    Calculate total discharge from a component dictionary.
-
-    Parameters
-    ----------
-    q_dict : dict, optional
-        Dictionary with individual components of discharge. The default is None.
-
-    Returns
-    -------
-    all_Q : float, np.ndarray
-        Total discharge summed over components, keeping the same size as input components.
-
-    '''
+    
     all_Q = None
     for ikey in list(q_dict.keys()):
         if isinstance(q_dict[ikey],(list,np.ndarray)):
@@ -910,15 +792,15 @@ def integrate_Q(dates, discharge):
 
     Parameters
     ----------
-    dates : list-like, pandas.Series
-        Time list.
-    discharge : list-like
-        Discharge rates to be integrated over time.
+    dates : Series
+        Series object of pandas.core.series module
+    discharge : Series
+        Series object of pandas.core.series module
 
     Returns
     -------
-    V_flux : np.ndarray
-        Integrated volume over each timestep.
+    V_flux : , Array of object
+        ndarray object of numpy module
 
     """
     V_flux = np.zeros_like(discharge)
@@ -1013,15 +895,15 @@ def rnp(sim,obs,parametric=False):
 
     Parameters
     ----------
-    sim : np.ndarray
-        Simulated value or list.
-    obs : np.ndarray
-        Observed value or list.
+    sim : TYPE
+        DESCRIPTION.
+    obs : TYPE
+        DESCRIPTION.
 
     Returns
     -------
-    rnp_ : np.ndarray
-        Calculated efficiency array.
+    rnp_ : TYPE
+        DESCRIPTION.
 
     '''
     
@@ -1065,34 +947,7 @@ def rnp(sim,obs,parametric=False):
 def prepare_water_elev(fname,dt='600s',start_datetime=None,end_datetime=None,
                        time_col='datetime',
                        interp_method='linear',interp_order=1, interp_limit=12):
-    '''
-    Load water elevations to new timestep.
-
-    Parameters
-    ----------
-    fname : str
-        Filename of input water levels.
-    dt : str, optional
-        Timestep in pandas-readable string format. The default is '600s'.
-    start_datetime : str, datetime.datetime, optional
-        Starting date for the output water level series. The default is None.
-    end_datetime : str, datetime.datetime, optional
-        Ending date to use for the output water level series. The default is None.
-    time_col : str, optional
-        Name of time column in fname. The default is 'datetime'.
-    interp_method : str, optional
-        Interpolation method for changing to new timestep. The default is 'linear'.
-    interp_order : int, optional
-        Interpolation order. The default is 1.
-    interp_limit : int, optional
-        Interpolation limit - number of points that would be interpolated/filled. The default is 12.
-
-    Returns
-    -------
-    df_resampled : pandas.DataFrame
-        Resampled water level time series data.
-
-    '''
+    
     df = pd.read_csv(fname)
     
     # Specify data types
@@ -1128,27 +983,6 @@ def prepare_water_elev(fname,dt='600s',start_datetime=None,end_datetime=None,
 def unique_rows(a,sort=True,return_inverse=False):
     '''
     Find unique rows and return indexes of unique rows
-
-    Parameters
-    ----------
-    a : np.ndarray
-        Input two-dimensional array.
-    sort : bool, optional
-        Boolean to sort the unique indexes. The default is True.
-    return_inverse : bool, optional
-        Boolean to return the inverse array. The default is False.
-
-    Returns
-    -------
-    unique_a, np.ndarray
-        Unique row values. Only returned if return_inverse = True.
-    uind : np.ndarray
-        Indexes of the first index for each unique row in a. Only returned if return_inverse = True.
-    univ: np.ndarray
-        Inverse array of indexes to recreate a from unique_a and uind. Only returned if return_inverse = True.
-    outorder:
-        Unique row indexes, either sorted or not sorted, depending on sort variable.
-
     '''
     a = np.ascontiguousarray(a)
     unique_a,uind,uinv = np.unique(a.view([('', a.dtype)]*a.shape[1]),return_index=True,return_inverse=True)
@@ -1162,4 +996,30 @@ def unique_rows(a,sort=True,return_inverse=False):
     else:
         return outorder
 # -------------- End Processing functions --------------------
-                                          
+                        
+# -------------- Plotting functions --------------------    
+def matplotter(mat, minelev, maxelev, cbar_label):
+    """
+    Plot active cells.
+    
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    cax = ax.matshow(mat, interpolation='nearest', vmin=minelev, vmax=maxelev)
+    fig.colorbar(cax, label=cbar_label)
+    ax.set_xlabel('X [m]', labelpad=20)
+    ax.xaxis.set_label_position('top')
+    ax.axes.yaxis.set_visible(True)
+    ax.set_ylabel('Y [m]')
+    ax.tick_params(axis='y', which=u'both',left=True)
+    ax.tick_params(axis='x', which=u'both',bottom=False)
+
+def DateAxisFmt(yax_label):
+    loc = mdates.AutoDateLocator()
+    plt.gca().xaxis.set_major_locator(loc)
+    plt.gca().xaxis.set_major_formatter(mdates.AutoDateFormatter(loc))
+    plt.gcf().autofmt_xdate()
+    plt.xlabel('Date', fontsize=22)
+    plt.ylabel(yax_label, fontsize=22)
+
+# -------------- End Plotting functions --------------------                    
